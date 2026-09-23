@@ -11,18 +11,13 @@ import io
 from src.inference import process_frame, load_inference_model
 
 # ------------------------------------------------------------------ #
-# Custom live webcam component — uses browser getUserMedia API        #
-# Works on Streamlit Cloud without WebRTC/UDP                        #
-# Relative path from app root works on both local & cloud            #
+# Custom live webcam component — browser getUserMedia + postMessage   #
+# No WebRTC, no UDP, works on Streamlit Cloud over plain HTTPS       #
 # ------------------------------------------------------------------ #
 _webcam_component = components.declare_component(
     "live_webcam",
     path="components/webcam"
 )
-
-def _live_webcam_feed(key="webcam"):
-    """Returns a base64 JPEG data-URL string from the browser camera, or None."""
-    return _webcam_component(key=key, default=None)
 
 
 @st.cache_resource
@@ -34,19 +29,12 @@ def get_model(model_name):
     return load_inference_model(model_path, class_idx_path)
 
 
-def _run_inference_on_image(image_pil, model, idx_to_class):
-    """Convert PIL image to BGR, run process_frame, return annotated RGB image."""
-    img_array = np.array(image_pil.convert("RGB"))
-    img_bgr = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
-    annotated_bgr = process_frame(img_bgr, model, idx_to_class)
-    return cv2.cvtColor(annotated_bgr, cv2.COLOR_BGR2RGB)
-
-
-def _b64_to_pil(b64_data_url: str) -> Image.Image:
-    """Decode a base64 data URL (image/jpeg) into a PIL Image."""
+def _decode_frame(b64_data_url):
+    """Decode a base64 data URL (image/jpeg) into a BGR numpy array."""
     header, encoded = b64_data_url.split(",", 1)
     img_bytes = base64.b64decode(encoded)
-    return Image.open(io.BytesIO(img_bytes))
+    pil_img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+    return cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
 
 
 def render():
@@ -75,15 +63,18 @@ def render():
         color: #A0AEC0;
         margin-bottom: 0.75rem;
     }
-    .cam-info-box {
-        background: linear-gradient(135deg, #EBF4FF 0%, #F0FFF4 100%);
-        border: 1px solid #BEE3F8;
-        border-radius: 12px;
-        padding: 0.85rem 1.1rem;
+    .cam-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        background: #F0FFF4;
+        border: 1px solid #C6F6D5;
+        border-radius: 6px;
+        padding: 0.3rem 0.75rem;
         font-family: 'Inter', sans-serif;
-        font-size: 0.875rem;
-        color: #2D3748;
-        margin-bottom: 1rem;
+        font-size: 0.78rem;
+        color: #276749;
+        margin-bottom: 0.75rem;
     }
     .legend-strip {
         display: flex;
@@ -91,7 +82,7 @@ def render():
         font-family: 'Inter', sans-serif;
         font-size: 0.82rem;
         color: #718096;
-        margin-top: 1.2rem;
+        margin-top: 1rem;
         padding: 0.6rem 1rem;
         background: #F8F9FA;
         border: 1px solid #E2E8F0;
@@ -114,7 +105,7 @@ def render():
     st.markdown("""
     <div class="ld-header">
         <h1>Detection Studio</h1>
-        <p>Real-time mask compliance detection — upload an image, use local webcam, or stream live from your browser.</p>
+        <p>Real-time mask compliance detection powered by CNN inference.</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -165,9 +156,10 @@ def render():
             st.markdown('<div class="panel-title">Inference Result</div>', unsafe_allow_html=True)
             if uploaded_file is not None:
                 image = Image.open(uploaded_file)
+                img_bgr = cv2.cvtColor(np.array(image.convert("RGB")), cv2.COLOR_RGB2BGR)
                 with st.spinner("Running model..."):
-                    result_rgb = _run_inference_on_image(image, model, idx_to_class)
-                st.image(result_rgb, use_container_width=True)
+                    processed = process_frame(img_bgr, model, idx_to_class)
+                st.image(cv2.cvtColor(processed, cv2.COLOR_BGR2RGB), use_container_width=True)
             else:
                 st.markdown("""
                 <div style="height:220px;display:flex;align-items:center;justify-content:center;
@@ -184,13 +176,13 @@ def render():
         </div>""", unsafe_allow_html=True)
 
     # ------------------------------------------------------------------ #
-    # TAB 2 — Local Camera (OpenCV, works only when running locally)     #
+    # TAB 2 — Local Camera (server-side OpenCV, only works locally)      #
     # ------------------------------------------------------------------ #
     with tab2:
         st.markdown("""
-        <div class="cam-info-box">
-            This tab only works when running the app <strong>locally on your machine</strong>.
-            It uses OpenCV to access your USB/built-in webcam directly.
+        <div class="cam-badge">
+            <span style="font-size:0.55rem;">&#9679;</span>
+            Works only when running locally
         </div>
         """, unsafe_allow_html=True)
 
@@ -245,43 +237,39 @@ def render():
         </div>""", unsafe_allow_html=True)
 
     # ------------------------------------------------------------------ #
-    # TAB 3 — Live Browser Camera (custom component, cloud-compatible)   #
-    # Auto-captures frames from browser camera every 600ms               #
+    # TAB 3 — Live Browser Camera (custom component, works on cloud)     #
+    # Layout mirrors the local camera tab exactly                        #
     # ------------------------------------------------------------------ #
     with tab3:
         st.markdown("""
-        <div class="cam-info-box">
-            Works <strong>locally and on the cloud</strong>. Allow camera access when prompted — 
-            detection runs automatically every second, no clicking required.
+        <div class="cam-badge">
+            <span style="font-size:0.55rem;">&#9679;</span>
+            Works locally and on the cloud &mdash; allow camera access when prompted
         </div>
         """, unsafe_allow_html=True)
 
-        cam_col, res_col = st.columns([1, 1], gap="large")
+        # The custom component streams the live webcam video in the browser
+        # and auto-sends JPEG frames to Python every ~700ms
+        frame_data = _webcam_component(key="live_cam", default=None, height=400)
 
-        with cam_col:
-            st.markdown('<div class="panel-title">Live Feed</div>', unsafe_allow_html=True)
-            # This component auto-captures frames from the browser webcam
-            frame_b64 = _live_webcam_feed(key="live_cam")
+        # Display the annotated inference result below the live feed
+        result_placeholder = st.empty()
 
-        with res_col:
-            st.markdown('<div class="panel-title">Inference Result</div>', unsafe_allow_html=True)
-            result_placeholder = st.empty()
-
-            if frame_b64 is not None:
-                try:
-                    pil_image = _b64_to_pil(frame_b64)
-                    result_rgb = _run_inference_on_image(pil_image, model, idx_to_class)
-                    result_placeholder.image(result_rgb, use_container_width=True)
-                except Exception as e:
-                    result_placeholder.error(f"Inference error: {e}")
-            else:
-                result_placeholder.markdown("""
-                <div style="height:300px;display:flex;flex-direction:column;align-items:center;
-                            justify-content:center;background:#0F172A;border-radius:12px;
-                            font-family:Inter;color:#475569;font-size:0.9rem;gap:0.5rem;">
-                    <span style="font-size:2rem;opacity:0.4;">&#128247;</span>
-                    Allow camera access to begin detection
-                </div>""", unsafe_allow_html=True)
+        if frame_data is not None and isinstance(frame_data, dict) and "frame" in frame_data:
+            try:
+                img_bgr = _decode_frame(frame_data["frame"])
+                annotated_bgr = process_frame(img_bgr, model, idx_to_class)
+                annotated_rgb = cv2.cvtColor(annotated_bgr, cv2.COLOR_BGR2RGB)
+                result_placeholder.image(annotated_rgb, use_container_width=True, caption="Inference Result")
+            except Exception as e:
+                result_placeholder.error(f"Inference error: {e}")
+        else:
+            result_placeholder.markdown("""
+            <div style="height:100px;display:flex;align-items:center;justify-content:center;
+                        background:#F8F9FA;border:1px dashed #CBD5E0;border-radius:10px;
+                        font-family:Inter;color:#A0AEC0;font-size:0.88rem;margin-top:0.5rem;">
+                Waiting for camera feed...
+            </div>""", unsafe_allow_html=True)
 
         st.markdown("""
         <div class="legend-strip">

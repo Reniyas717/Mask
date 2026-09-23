@@ -1,70 +1,74 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <script src="https://unpkg.com/streamlit-component-lib/dist/streamlit-component-lib.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Inter', sans-serif; background: #0F172A; border-radius: 12px; overflow: hidden; }
-
+        body { background: transparent; overflow: hidden; }
         #container {
             position: relative;
             width: 100%;
             background: #0F172A;
             border-radius: 12px;
+            overflow: hidden;
         }
-
         video {
             width: 100%;
-            border-radius: 12px;
             display: block;
-            background: #0F172A;
+            border-radius: 12px;
         }
-
         canvas { display: none; }
-
-        .overlay {
+        .badge {
             position: absolute;
-            top: 10px;
-            left: 10px;
-            background: rgba(0,0,0,0.55);
+            top: 12px;
+            left: 12px;
+            background: rgba(0,0,0,0.6);
             color: #A3E635;
+            font-family: 'Inter', -apple-system, sans-serif;
             font-size: 11px;
             font-weight: 600;
-            letter-spacing: 0.05em;
-            padding: 4px 10px;
+            letter-spacing: 0.06em;
+            padding: 5px 12px;
             border-radius: 20px;
-            backdrop-filter: blur(4px);
+            backdrop-filter: blur(6px);
             display: flex;
             align-items: center;
             gap: 6px;
+            z-index: 10;
         }
-
         .dot {
-            width: 7px;
-            height: 7px;
+            width: 7px; height: 7px;
             background: #A3E635;
             border-radius: 50%;
             animation: pulse 1.2s infinite;
         }
-
         @keyframes pulse {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.3; }
         }
-
-        .error {
+        .idle {
+            height: 380px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Inter', -apple-system, sans-serif;
+            color: #475569;
+            font-size: 0.92rem;
+        }
+        .error-msg {
             color: #FC8181;
             padding: 2rem;
             text-align: center;
+            font-family: 'Inter', -apple-system, sans-serif;
             font-size: 0.85rem;
-            line-height: 1.6;
+            line-height: 1.7;
         }
     </style>
 </head>
 <body>
     <div id="container">
-        <video id="video" autoplay playsinline muted></video>
-        <div class="overlay">
+        <div id="idle" class="idle">Initialising camera...</div>
+        <video id="video" autoplay playsinline muted style="display:none;"></video>
+        <div id="badge" class="badge" style="display:none;">
             <div class="dot"></div>
             LIVE
         </div>
@@ -75,48 +79,82 @@
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        let captureInterval = null;
+        const idleEl = document.getElementById('idle');
+        const badgeEl = document.getElementById('badge');
+        let intervalId = null;
+        let frameCount = 0;
 
-        Streamlit.setFrameHeight(300);
+        function sendReady() {
+            // Tell Streamlit the component is ready
+            window.parent.postMessage({
+                isStreamlitMessage: true,
+                type: "streamlit:componentReady",
+                apiVersion: 1
+            }, "*");
+        }
+
+        function setFrameHeight(h) {
+            window.parent.postMessage({
+                isStreamlitMessage: true,
+                type: "streamlit:setFrameHeight",
+                height: h
+            }, "*");
+        }
+
+        function setValue(val) {
+            window.parent.postMessage({
+                isStreamlitMessage: true,
+                type: "streamlit:setComponentValue",
+                value: val,
+                dataType: "json",
+            }, "*");
+        }
 
         async function startCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        width: { ideal: 640 },
-                        height: { ideal: 480 },
-                        facingMode: 'user'
-                    }
+                    video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }
                 });
                 video.srcObject = stream;
+
                 video.onloadedmetadata = () => {
+                    idleEl.style.display = 'none';
+                    video.style.display = 'block';
+                    badgeEl.style.display = 'flex';
+
                     canvas.width = video.videoWidth;
                     canvas.height = video.videoHeight;
-                    // Capture a frame every 600ms (approx 1-2 FPS with cloud inference latency)
-                    captureInterval = setInterval(captureFrame, 600);
+
+                    // Set iframe height to match video aspect ratio
+                    const aspectRatio = video.videoHeight / video.videoWidth;
+                    const containerWidth = document.getElementById('container').offsetWidth;
+                    setFrameHeight(Math.round(containerWidth * aspectRatio) + 4);
+
+                    // Capture every 700ms — gives server ~1s to run inference per frame
+                    intervalId = setInterval(captureFrame, 700);
                 };
             } catch (err) {
-                document.getElementById('container').innerHTML =
-                    `<div class="error">
-                        Camera access denied.<br>
-                        Please allow camera permissions in your browser and refresh.
-                        <br><br><small>${err.message}</small>
-                     </div>`;
-                Streamlit.setComponentValue(null);
+                idleEl.innerHTML = `<div class="error-msg">
+                    Camera access denied or unavailable.<br>
+                    Please allow camera permissions in your browser and refresh.<br>
+                    <br><small>${err.message}</small>
+                </div>`;
+                setFrameHeight(200);
             }
         }
 
         function captureFrame() {
             if (video.readyState >= 2 && video.videoWidth > 0) {
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                // Encode at 65% quality JPEG to keep payload size small
-                const imageData = canvas.toDataURL('image/jpeg', 0.65);
-                Streamlit.setComponentValue(imageData);
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+                frameCount++;
+                setValue({ frame: dataUrl, seq: frameCount });
             }
         }
 
+        sendReady();
+        setFrameHeight(400);
         startCamera();
-        Streamlit.setComponentReady();
     </script>
 </body>
 </html>
