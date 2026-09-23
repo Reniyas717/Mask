@@ -13,10 +13,11 @@ from src.inference import process_frame, load_inference_model
 # ------------------------------------------------------------------ #
 # Custom live webcam component — uses browser getUserMedia API        #
 # Works on Streamlit Cloud without WebRTC/UDP                        #
+# Relative path from app root works on both local & cloud            #
 # ------------------------------------------------------------------ #
 _webcam_component = components.declare_component(
     "live_webcam",
-    path=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "components", "webcam")
+    path="components/webcam"
 )
 
 def _live_webcam_feed(key="webcam"):
