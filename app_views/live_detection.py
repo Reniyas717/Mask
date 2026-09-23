@@ -248,24 +248,27 @@ def render():
         </div>
         """, unsafe_allow_html=True)
 
-        # The custom component streams the live webcam video in the browser
-        # and auto-sends JPEG frames to Python every ~700ms
-        frame_data = _webcam_component(key="live_cam", default=None, height=400)
+        # The custom component streams live webcam video in the browser
+        # and auto-sends JPEG frames to Python every ~1.5s
+        frame_b64 = _webcam_component(key="live_cam", default=None, height=400)
 
-        # Display the annotated inference result below the live feed
-        result_placeholder = st.empty()
-
-        if frame_data is not None and isinstance(frame_data, dict) and "frame" in frame_data:
+        # Run inference when a new frame arrives
+        if frame_b64 is not None and isinstance(frame_b64, str) and "," in frame_b64:
             try:
-                img_bgr = _decode_frame(frame_data["frame"])
+                img_bgr = _decode_frame(frame_b64)
                 annotated_bgr = process_frame(img_bgr, model, idx_to_class)
                 annotated_rgb = cv2.cvtColor(annotated_bgr, cv2.COLOR_BGR2RGB)
-                result_placeholder.image(annotated_rgb, use_container_width=True, caption="Inference Result")
+                # Store in session state so result persists across reruns
+                st.session_state["cloud_last_result"] = annotated_rgb
             except Exception as e:
-                result_placeholder.error(f"Inference error: {e}")
+                st.error(f"Inference error: {e}")
+
+        # Always display the latest inference result
+        if "cloud_last_result" in st.session_state:
+            st.image(st.session_state["cloud_last_result"], use_container_width=True)
         else:
-            result_placeholder.markdown("""
-            <div style="height:100px;display:flex;align-items:center;justify-content:center;
+            st.markdown("""
+            <div style="height:80px;display:flex;align-items:center;justify-content:center;
                         background:#F8F9FA;border:1px dashed #CBD5E0;border-radius:10px;
                         font-family:Inter;color:#A0AEC0;font-size:0.88rem;margin-top:0.5rem;">
                 Waiting for camera feed...
@@ -277,3 +280,4 @@ def render():
             <span><span class="legend-dot" style="background:#E74C3C;"></span>No Mask</span>
             <span><span class="legend-dot" style="background:#E67E22;"></span>Incorrectly Worn</span>
         </div>""", unsafe_allow_html=True)
+
