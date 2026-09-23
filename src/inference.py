@@ -12,7 +12,8 @@ caffemodel_path = os.path.join(BASE_DIR, "models", "face_detector", "res10_300x3
 
 face_net = None
 if os.path.exists(prototxt_path) and os.path.exists(caffemodel_path):
-    face_net = cv2.dnn.readNetFromCaffe(prototxt_path, caffemodel_path)
+    # Use readNet instead of readNetFromCaffe for better compatibility with headless builds
+    face_net = cv2.dnn.readNet(caffemodel_path, prototxt_path)
 else:
     print(f"Warning: Face detector model not found at {prototxt_path}")
 
