@@ -62,8 +62,8 @@ outputs/metrics/*
 
 # Keep the final deployment models but ignore heavy temporary checkpoints
 # If models/ is large (>100MB), you may need Git LFS.
-models/face_detector/*.caffemodel
-models/face_detector/*.prototxt
+# models/face_detector/*.caffemodel
+# models/face_detector/*.prototxt
 # If you want to track models, uncomment the next line. 
 # Otherwise, keep it to avoid uploading huge .h5 files to github.
 # models/*.h5
