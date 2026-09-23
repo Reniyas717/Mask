@@ -6,15 +6,15 @@ import os
 
 from src.models import IMG_SIZE, get_model
 
-# Load OpenCV Deep Learning Face Detector (SSD)
-prototxt_path = os.path.join("models", "face_detector", "deploy.prototxt")
-caffemodel_path = os.path.join("models", "face_detector", "res10_300x300_ssd_iter_140000.caffemodel")
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+prototxt_path = os.path.join(BASE_DIR, "models", "face_detector", "deploy.prototxt")
+caffemodel_path = os.path.join(BASE_DIR, "models", "face_detector", "res10_300x300_ssd_iter_140000.caffemodel")
 
 face_net = None
 if os.path.exists(prototxt_path) and os.path.exists(caffemodel_path):
     face_net = cv2.dnn.readNetFromCaffe(prototxt_path, caffemodel_path)
 else:
-    print("Warning: Face detector model not found. Run download script.")
+    print(f"Warning: Face detector model not found at {prototxt_path}")
 
 # Color mappings (BGR for OpenCV)
 COLOR_MAP = {
@@ -51,6 +51,8 @@ def process_frame(frame, model, idx_to_class):
     Expects and returns a BGR frame (OpenCV format).
     """
     if face_net is None:
+        cv2.putText(frame, "Error: Face detector not loaded!", (20, 40), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
         return frame
         
     (h, w) = frame.shape[:2]
