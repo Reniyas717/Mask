@@ -57,8 +57,10 @@ outputs/models/*
 !outputs/models/.gitkeep
 outputs/figures/*
 !outputs/figures/.gitkeep
+!outputs/figures/*.png
 outputs/metrics/*
 !outputs/metrics/.gitkeep
+!outputs/metrics/*.csv
 
 # Keep the final deployment models but ignore heavy temporary checkpoints
 # If models/ is large (>100MB), you may need Git LFS.

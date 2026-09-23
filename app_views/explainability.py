@@ -54,7 +54,7 @@ def render():
         
     # Pick a random test image (filter out small blurry crops)
     if st.button("Load Random Test Image") or 'xai_img_path' not in st.session_state:
-        test_images = glob.glob("data/processed/*/*.jpg")
+        test_images = glob.glob("data/test_samples/*/*.jpg")
         valid_images = []
         # Try to find a high-res image
         random.shuffle(test_images)
