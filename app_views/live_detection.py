@@ -241,43 +241,47 @@ def render():
     # Layout mirrors the local camera tab exactly                        #
     # ------------------------------------------------------------------ #
     with tab3:
-        st.markdown("""
-        <div class="cam-badge">
-            <span style="font-size:0.55rem;">&#9679;</span>
-            Works locally and on the cloud &mdash; allow camera access when prompted
-        </div>
-        """, unsafe_allow_html=True)
-
-        # The custom component streams live webcam video in the browser
-        # and auto-sends JPEG frames to Python every ~1.5s
-        frame_b64 = _webcam_component(key="live_cam", default=None, height=400)
-
-        # Run inference when a new frame arrives
-        if frame_b64 is not None and isinstance(frame_b64, str) and "," in frame_b64:
-            try:
-                img_bgr = _decode_frame(frame_b64)
-                annotated_bgr = process_frame(img_bgr, model, idx_to_class)
-                annotated_rgb = cv2.cvtColor(annotated_bgr, cv2.COLOR_BGR2RGB)
-                # Store in session state so result persists across reruns
-                st.session_state["cloud_last_result"] = annotated_rgb
-            except Exception as e:
-                st.error(f"Inference error: {e}")
-
-        # Always display the latest inference result
-        if "cloud_last_result" in st.session_state:
-            st.image(st.session_state["cloud_last_result"], use_container_width=True)
-        else:
+        @st.fragment
+        def run_cloud_camera():
             st.markdown("""
-            <div style="height:80px;display:flex;align-items:center;justify-content:center;
-                        background:#F8F9FA;border:1px dashed #CBD5E0;border-radius:10px;
-                        font-family:Inter;color:#A0AEC0;font-size:0.88rem;margin-top:0.5rem;">
-                Waiting for camera feed...
+            <div class="cam-badge">
+                <span style="font-size:0.55rem;">&#9679;</span>
+                Works locally and on the cloud &mdash; allow camera access when prompted
+            </div>
+            """, unsafe_allow_html=True)
+
+            # The custom component streams live webcam video in the browser
+            # and auto-sends JPEG frames to Python every ~1.5s
+            frame_b64 = _webcam_component(key="live_cam", default=None, height=400)
+
+            # Run inference when a new frame arrives
+            if frame_b64 is not None and isinstance(frame_b64, str) and "," in frame_b64:
+                try:
+                    img_bgr = _decode_frame(frame_b64)
+                    annotated_bgr = process_frame(img_bgr, model, idx_to_class)
+                    annotated_rgb = cv2.cvtColor(annotated_bgr, cv2.COLOR_BGR2RGB)
+                    # Store in session state so result persists across reruns
+                    st.session_state["cloud_last_result"] = annotated_rgb
+                except Exception as e:
+                    st.error(f"Inference error: {e}")
+
+            # Always display the latest inference result
+            if "cloud_last_result" in st.session_state:
+                st.image(st.session_state["cloud_last_result"], use_container_width=True)
+            else:
+                st.markdown("""
+                <div style="height:80px;display:flex;align-items:center;justify-content:center;
+                            background:#F8F9FA;border:1px dashed #CBD5E0;border-radius:10px;
+                            font-family:Inter;color:#A0AEC0;font-size:0.88rem;margin-top:0.5rem;">
+                    Waiting for camera feed...
+                </div>""", unsafe_allow_html=True)
+
+            st.markdown("""
+            <div class="legend-strip">
+                <span><span class="legend-dot" style="background:#27AE60;"></span>Correctly Worn</span>
+                <span><span class="legend-dot" style="background:#E74C3C;"></span>No Mask</span>
+                <span><span class="legend-dot" style="background:#E67E22;"></span>Incorrectly Worn</span>
             </div>""", unsafe_allow_html=True)
 
-        st.markdown("""
-        <div class="legend-strip">
-            <span><span class="legend-dot" style="background:#27AE60;"></span>Correctly Worn</span>
-            <span><span class="legend-dot" style="background:#E74C3C;"></span>No Mask</span>
-            <span><span class="legend-dot" style="background:#E67E22;"></span>Incorrectly Worn</span>
-        </div>""", unsafe_allow_html=True)
+        run_cloud_camera()
 
