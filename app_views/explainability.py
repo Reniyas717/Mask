@@ -95,6 +95,15 @@ def render():
     else:
         st.error(f"**Predicted:** `{pred_class}` ({confidence*100:.1f}%) ❌")
         
+    st.markdown("""
+    ---
+    ### How to interpret these results:
+    * **Original Image**: The preprocessed input as seen by the neural network.
+    * **Grad-CAM**: Highlights (in bright yellow/red) the specific regions of the image that the model paid the most attention to when making its prediction.
+    * **LIME**: Highlights super-pixels that positively contributed to the prediction in green, and areas that argued against it in red.
+    ---
+    """)
+        
     col1, col2, col3 = st.columns(3)
     
     # Upscale size for high-quality display in UI (prevents browser blocky stretching)
