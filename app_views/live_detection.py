@@ -1,11 +1,28 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import cv2
 import numpy as np
 from PIL import Image
 import os
 import time
+import base64
+import io
 
 from src.inference import process_frame, load_inference_model
+
+# ------------------------------------------------------------------ #
+# Custom live webcam component — uses browser getUserMedia API        #
+# Works on Streamlit Cloud without WebRTC/UDP                        #
+# ------------------------------------------------------------------ #
+_webcam_component = components.declare_component(
+    "live_webcam",
+    path=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "components", "webcam")
+)
+
+def _live_webcam_feed(key="webcam"):
+    """Returns a base64 JPEG data-URL string from the browser camera, or None."""
+    return _webcam_component(key=key, default=None)
+
 
 @st.cache_resource
 def get_model(model_name):
@@ -22,6 +39,13 @@ def _run_inference_on_image(image_pil, model, idx_to_class):
     img_bgr = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
     annotated_bgr = process_frame(img_bgr, model, idx_to_class)
     return cv2.cvtColor(annotated_bgr, cv2.COLOR_BGR2RGB)
+
+
+def _b64_to_pil(b64_data_url: str) -> Image.Image:
+    """Decode a base64 data URL (image/jpeg) into a PIL Image."""
+    header, encoded = b64_data_url.split(",", 1)
+    img_bytes = base64.b64decode(encoded)
+    return Image.open(io.BytesIO(img_bytes))
 
 
 def render():
@@ -50,30 +74,15 @@ def render():
         color: #A0AEC0;
         margin-bottom: 0.75rem;
     }
-    .result-card {
-        border-radius: 14px;
-        border: 1px solid #E2E8F0;
-        background: #FAFBFC;
-        padding: 1.2rem 1.4rem;
-        margin-top: 1rem;
+    .cam-info-box {
+        background: linear-gradient(135deg, #EBF4FF 0%, #F0FFF4 100%);
+        border: 1px solid #BEE3F8;
+        border-radius: 12px;
+        padding: 0.85rem 1.1rem;
         font-family: 'Inter', sans-serif;
-    }
-    .result-card .rc-label {
-        font-size: 0.72rem;
-        font-weight: 600;
-        letter-spacing: 0.07em;
-        text-transform: uppercase;
-        color: #A0AEC0;
-        margin-bottom: 0.3rem;
-    }
-    .result-card .rc-verdict {
-        font-size: 1.5rem;
-        font-weight: 700;
-        margin-bottom: 0.2rem;
-    }
-    .result-card .rc-conf {
-        font-size: 0.82rem;
-        color: #718096;
+        font-size: 0.875rem;
+        color: #2D3748;
+        margin-bottom: 1rem;
     }
     .legend-strip {
         display: flex;
@@ -95,16 +104,6 @@ def render():
         margin-right: 5px;
         vertical-align: middle;
     }
-    .cam-info-box {
-        background: linear-gradient(135deg, #EBF4FF 0%, #F0FFF4 100%);
-        border: 1px solid #BEE3F8;
-        border-radius: 12px;
-        padding: 1rem 1.25rem;
-        font-family: 'Inter', sans-serif;
-        font-size: 0.875rem;
-        color: #2D3748;
-        margin-bottom: 1rem;
-    }
     .stTabs [role="tablist"] { border-bottom: 2px solid #E2E8F0; gap: 2rem; }
     .stTabs [role="tab"] { font-family: 'Inter', sans-serif; font-weight: 500; color: #718096; border: none !important; padding-bottom: 0.75rem; }
     .stTabs [aria-selected="true"] { color: #4A7C59 !important; border-bottom: 2px solid #4A7C59 !important; }
@@ -114,11 +113,11 @@ def render():
     st.markdown("""
     <div class="ld-header">
         <h1>Detection Studio</h1>
-        <p>Upload an image, use your local webcam, or capture via browser — all powered by CNN inference.</p>
+        <p>Real-time mask compliance detection — upload an image, use local webcam, or stream live from your browser.</p>
     </div>
     """, unsafe_allow_html=True)
 
-    # Model selector
+    # ── Model selector ─────────────────────────────────────────────── #
     models_dir = "models"
     available_models = []
     if os.path.exists(models_dir):
@@ -147,7 +146,7 @@ def render():
         </div>
         """, unsafe_allow_html=True)
 
-    tab1, tab2, tab3 = st.tabs(["Image Upload", "Local Camera", "Browser Camera"])
+    tab1, tab2, tab3 = st.tabs(["Image Upload", "Local Camera", "Live Browser Camera"])
 
     # ------------------------------------------------------------------ #
     # TAB 1 — Image Upload                                                #
@@ -184,7 +183,7 @@ def render():
         </div>""", unsafe_allow_html=True)
 
     # ------------------------------------------------------------------ #
-    # TAB 2 — Local Camera (OpenCV, works only when running locally)      #
+    # TAB 2 — Local Camera (OpenCV, works only when running locally)     #
     # ------------------------------------------------------------------ #
     with tab2:
         st.markdown("""
@@ -214,7 +213,6 @@ def render():
             else:
                 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
                 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-
                 stop_placeholder = st.empty()
                 with stop_placeholder.container():
                     st.info("Camera is running. Click **Stop Camera** above to stop.")
@@ -246,35 +244,42 @@ def render():
         </div>""", unsafe_allow_html=True)
 
     # ------------------------------------------------------------------ #
-    # TAB 3 — Browser Camera (st.camera_input, works on cloud)           #
+    # TAB 3 — Live Browser Camera (custom component, cloud-compatible)   #
+    # Auto-captures frames from browser camera every 600ms               #
     # ------------------------------------------------------------------ #
     with tab3:
         st.markdown("""
         <div class="cam-info-box">
-            This tab works <strong>both locally and on the cloud</strong>.
-            Click <em>Take Photo</em> to capture a frame from your browser camera, then see instant mask detection results below.
+            Works <strong>locally and on the cloud</strong>. Allow camera access when prompted — 
+            detection runs automatically every second, no clicking required.
         </div>
         """, unsafe_allow_html=True)
 
         cam_col, res_col = st.columns([1, 1], gap="large")
+
         with cam_col:
-            st.markdown('<div class="panel-title">Camera Capture</div>', unsafe_allow_html=True)
-            camera_image = st.camera_input("Capture a frame", label_visibility="collapsed")
+            st.markdown('<div class="panel-title">Live Feed</div>', unsafe_allow_html=True)
+            # This component auto-captures frames from the browser webcam
+            frame_b64 = _live_webcam_feed(key="live_cam")
 
         with res_col:
             st.markdown('<div class="panel-title">Inference Result</div>', unsafe_allow_html=True)
-            if camera_image is not None:
-                image = Image.open(camera_image)
-                with st.spinner("Analysing..."):
-                    result_rgb = _run_inference_on_image(image, model, idx_to_class)
-                st.image(result_rgb, use_container_width=True)
+            result_placeholder = st.empty()
+
+            if frame_b64 is not None:
+                try:
+                    pil_image = _b64_to_pil(frame_b64)
+                    result_rgb = _run_inference_on_image(pil_image, model, idx_to_class)
+                    result_placeholder.image(result_rgb, use_container_width=True)
+                except Exception as e:
+                    result_placeholder.error(f"Inference error: {e}")
             else:
-                st.markdown("""
+                result_placeholder.markdown("""
                 <div style="height:300px;display:flex;flex-direction:column;align-items:center;
-                            justify-content:center;background:#F8F9FA;border:1px dashed #CBD5E0;
-                            border-radius:10px;font-family:Inter;color:#CBD5E0;font-size:0.9rem;gap:0.5rem;">
-                    <span style="font-size:2rem;">&#128247;</span>
-                    Capture a photo to run detection
+                            justify-content:center;background:#0F172A;border-radius:12px;
+                            font-family:Inter;color:#475569;font-size:0.9rem;gap:0.5rem;">
+                    <span style="font-size:2rem;opacity:0.4;">&#128247;</span>
+                    Allow camera access to begin detection
                 </div>""", unsafe_allow_html=True)
 
         st.markdown("""

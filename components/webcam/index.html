@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="https://unpkg.com/streamlit-component-lib@2.0.0/dist/streamlit-component-lib.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: #0F172A; border-radius: 12px; overflow: hidden; }
+
+        #container {
+            position: relative;
+            width: 100%;
+            background: #0F172A;
+            border-radius: 12px;
+        }
+
+        video {
+            width: 100%;
+            border-radius: 12px;
+            display: block;
+            background: #0F172A;
+        }
+
+        canvas { display: none; }
+
+        .overlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.55);
+            color: #A3E635;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            padding: 4px 10px;
+            border-radius: 20px;
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .dot {
+            width: 7px;
+            height: 7px;
+            background: #A3E635;
+            border-radius: 50%;
+            animation: pulse 1.2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .error {
+            color: #FC8181;
+            padding: 2rem;
+            text-align: center;
+            font-size: 0.85rem;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <video id="video" autoplay playsinline muted></video>
+        <div class="overlay">
+            <div class="dot"></div>
+            LIVE
+        </div>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let captureInterval = null;
+
+        Streamlit.setFrameHeight(300);
+
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: 'user'
+                    }
+                });
+                video.srcObject = stream;
+                video.onloadedmetadata = () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    // Capture a frame every 600ms (approx 1-2 FPS with cloud inference latency)
+                    captureInterval = setInterval(captureFrame, 600);
+                };
+            } catch (err) {
+                document.getElementById('container').innerHTML =
+                    `<div class="error">
+                        Camera access denied.<br>
+                        Please allow camera permissions in your browser and refresh.
+                        <br><br><small>${err.message}</small>
+                     </div>`;
+                Streamlit.setComponentValue(null);
+            }
+        }
+
+        function captureFrame() {
+            if (video.readyState >= 2 && video.videoWidth > 0) {
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                // Encode at 65% quality JPEG to keep payload size small
+                const imageData = canvas.toDataURL('image/jpeg', 0.65);
+                Streamlit.setComponentValue(imageData);
+            }
+        }
+
+        startCamera();
+        Streamlit.setComponentReady();
+    </script>
+</body>
+</html>
